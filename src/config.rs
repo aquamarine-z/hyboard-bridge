@@ -5,6 +5,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+/// Default internal port for the Axum authentication webhook server.
+const DEFAULT_AUTH_LISTEN_ADDR: &str = "0.0.0.0:9999";
+
 /// Application configuration structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -22,8 +25,8 @@ pub struct Config {
     /// Interval in seconds for pushing traffic metrics to panel (default: 60s)
     pub push_interval_secs: u64,
 
-    // --- Combined Hysteria 2 Integration Settings ---
-    /// Address for the Axum HTTP authentication webhook server (e.g. `0.0.0.0:9999`)
+    // --- Hysteria 2 Integration Settings ---
+    /// Address for the Axum HTTP authentication webhook server (fixed to `0.0.0.0:9999`)
     pub auth_listen_addr: String,
     /// URL of Hysteria 2 traffic statistics API (e.g. `http://127.0.0.1:7654/traffic`)
     pub hysteria_traffic_url: String,
@@ -61,22 +64,12 @@ impl Config {
             .parse::<u64>()
             .unwrap_or(60);
 
-        // Parse combined required parameter HYSTERIA_API (or fallback to legacy variables if provided)
-        let hysteria_api_input = std::env::var("HYSTERIA_API")
-            .or_else(|_| std::env::var("HYSTERIA_ADDR"))
-            .or_else(|_| {
-                // Backward compatibility if both legacy envs are present
-                if let (Ok(auth), Ok(traffic)) = (std::env::var("AUTH_LISTEN_ADDR"), std::env::var("HYSTERIA_TRAFFIC_URL")) {
-                    Ok(format!("{}@{}", auth, traffic))
-                } else if let Ok(traffic) = std::env::var("HYSTERIA_TRAFFIC_URL") {
-                    Ok(traffic)
-                } else {
-                    Err(std::env::VarError::NotPresent)
-                }
-            })
-            .context("Environment variable HYSTERIA_API is required (e.g. 127.0.0.1, hysteria, or http://127.0.0.1:7654)")?;
+        // Required HYSTERIA_API parameter: e.g. "http://127.0.0.1:7654" or "http://hysteria:7654"
+        let raw_hysteria_api = std::env::var("HYSTERIA_API")
+            .context("Environment variable HYSTERIA_API is required (e.g. http://127.0.0.1:7654 or http://hysteria:7654)")?;
 
-        let (auth_listen_addr, hysteria_traffic_url) = Self::parse_hysteria_api(&hysteria_api_input)?;
+        let hysteria_traffic_url = Self::normalize_traffic_url(&raw_hysteria_api)?;
+        let auth_listen_addr = DEFAULT_AUTH_LISTEN_ADDR.to_string();
 
         Ok(Self {
             api_host,
@@ -90,71 +83,28 @@ impl Config {
         })
     }
 
-    /// Parse unified `HYSTERIA_API` parameter into (auth_listen_addr, hysteria_traffic_url).
+    /// Normalize the user-supplied HYSTERIA_API URL into the full traffic endpoint.
     ///
-    /// Supported formats:
-    /// - `"127.0.0.1"` or `"hysteria"` -> `("0.0.0.0:9999", "http://<host>:7654/traffic")`
-    /// - `"http://127.0.0.1:7654"` -> `("0.0.0.0:9999", "http://127.0.0.1:7654/traffic")`
-    /// - `"0.0.0.0:9999@http://127.0.0.1:7654/traffic"` -> `("0.0.0.0:9999", "http://127.0.0.1:7654/traffic")`
-    /// - `"9999:7654"` -> `("0.0.0.0:9999", "http://127.0.0.1:7654/traffic")`
-    pub fn parse_hysteria_api(input: &str) -> Result<(String, String)> {
+    /// Examples:
+    /// - `"http://127.0.0.1:7654"` -> `"http://127.0.0.1:7654/traffic"`
+    /// - `"http://hysteria:7654"` -> `"http://hysteria:7654/traffic"`
+    /// - `"http://127.0.0.1:7654/traffic"` -> `"http://127.0.0.1:7654/traffic"`
+    pub fn normalize_traffic_url(input: &str) -> Result<String> {
         let trimmed = input.trim();
         if trimmed.is_empty() {
-            anyhow::bail!("HYSTERIA_API parameter cannot be empty");
+            anyhow::bail!("HYSTERIA_API cannot be empty");
         }
 
-        // 1. Explicit combined format: "auth_addr@traffic_url"
-        if let Some((auth_part, traffic_part)) = trimmed.split_once('@') {
-            let auth = if auth_part.contains(':') {
-                auth_part.trim().to_string()
-            } else {
-                format!("0.0.0.0:{}", auth_part.trim())
-            };
-
-            let mut traffic = traffic_part.trim().to_string();
-            if !traffic.starts_with("http://") && !traffic.starts_with("https://") {
-                traffic = format!("http://{}", traffic);
-            }
-            if !traffic.ends_with("/traffic") {
-                traffic = format!("{}/traffic", traffic.trim_end_matches('/'));
-            }
-
-            return Ok((auth, traffic));
+        let mut url = trimmed.to_string();
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            url = format!("http://{}", url);
         }
 
-        // 2. Port pair format: "9999:7654"
-        let parts: Vec<&str> = trimmed.split(':').collect();
-        if parts.len() == 2 && parts[0].chars().all(|c| c.is_ascii_digit()) && parts[1].chars().all(|c| c.is_ascii_digit()) {
-            let auth_port = parts[0];
-            let traffic_port = parts[1];
-            return Ok((
-                format!("0.0.0.0:{}", auth_port),
-                format!("http://127.0.0.1:{}/traffic", traffic_port),
-            ));
+        if !url.ends_with("/traffic") {
+            url = format!("{}/traffic", url.trim_end_matches('/'));
         }
 
-        // 3. HTTP URL format: "http://127.0.0.1:7654" or "http://hysteria:7654/traffic"
-        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            let mut traffic = trimmed.to_string();
-            if !traffic.ends_with("/traffic") {
-                traffic = format!("{}/traffic", traffic.trim_end_matches('/'));
-            }
-            return Ok(("0.0.0.0:9999".to_string(), traffic));
-        }
-
-        // 4. Host:Port format: "127.0.0.1:7654" or "hysteria:7654"
-        if trimmed.contains(':') {
-            return Ok((
-                "0.0.0.0:9999".to_string(),
-                format!("http://{}/traffic", trimmed.trim_end_matches('/')),
-            ));
-        }
-
-        // 5. Plain Host / IP format: "127.0.0.1" or "hysteria"
-        Ok((
-            "0.0.0.0:9999".to_string(),
-            format!("http://{}:7654/traffic", trimmed),
-        ))
+        Ok(url)
     }
 }
 
@@ -163,34 +113,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_hysteria_api_variants() {
-        // Plain host
-        let (auth, traffic) = Config::parse_hysteria_api("127.0.0.1").unwrap();
-        assert_eq!(auth, "0.0.0.0:9999");
-        assert_eq!(traffic, "http://127.0.0.1:7654/traffic");
-
-        // Docker hostname
-        let (auth, traffic) = Config::parse_hysteria_api("hysteria").unwrap();
-        assert_eq!(auth, "0.0.0.0:9999");
-        assert_eq!(traffic, "http://hysteria:7654/traffic");
-
-        // Full URL
-        let (auth, traffic) = Config::parse_hysteria_api("http://127.0.0.1:7654").unwrap();
-        assert_eq!(auth, "0.0.0.0:9999");
-        assert_eq!(traffic, "http://127.0.0.1:7654/traffic");
-
-        let (auth, traffic) = Config::parse_hysteria_api("http://hysteria:7654/traffic").unwrap();
-        assert_eq!(auth, "0.0.0.0:9999");
-        assert_eq!(traffic, "http://hysteria:7654/traffic");
-
-        // Explicit @ combined format
-        let (auth, traffic) = Config::parse_hysteria_api("127.0.0.1:8888@http://127.0.0.1:7777/traffic").unwrap();
-        assert_eq!(auth, "127.0.0.1:8888");
-        assert_eq!(traffic, "http://127.0.0.1:7777/traffic");
-
-        // Port pair
-        let (auth, traffic) = Config::parse_hysteria_api("9999:7654").unwrap();
-        assert_eq!(auth, "0.0.0.0:9999");
-        assert_eq!(traffic, "http://127.0.0.1:7654/traffic");
+    fn test_normalize_traffic_url() {
+        assert_eq!(
+            Config::normalize_traffic_url("http://127.0.0.1:7654").unwrap(),
+            "http://127.0.0.1:7654/traffic"
+        );
+        assert_eq!(
+            Config::normalize_traffic_url("http://hysteria:7654").unwrap(),
+            "http://hysteria:7654/traffic"
+        );
+        assert_eq!(
+            Config::normalize_traffic_url("http://127.0.0.1:7654/traffic").unwrap(),
+            "http://127.0.0.1:7654/traffic"
+        );
+        assert_eq!(
+            Config::normalize_traffic_url("127.0.0.1:7654").unwrap(),
+            "http://127.0.0.1:7654/traffic"
+        );
     }
 }

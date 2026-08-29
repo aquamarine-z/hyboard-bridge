@@ -15,7 +15,7 @@ services:
       - .env
     environment:
       - RUST_LOG=info
-      - HYSTERIA_API=hysteria
+      - HYSTERIA_API=http://hysteria:7654
     networks:
       - hyboard-net
 

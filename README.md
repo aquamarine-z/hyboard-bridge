@@ -75,12 +75,12 @@ flowchart TD
 
 ## ⚙️ 环境变量与配置参数
 
-| 变量名 | 必填 | 默认值 | 说明与格式示例 |
+| 变量名 | 必填 | 默认值 | 说明与示例 |
 | :--- | :---: | :---: | :--- |
 | `API_HOST` | **是** | - | 面板地址，如 `https://panel.example.com` |
 | `API_KEY` / `TOKEN` | **是** | - | X-board 面板中的通讯密钥 (UniProxy Token) |
 | `NODE_ID` | **是** | - | 面板中分配的节点 ID（整数，如 `1`） |
-| `HYSTERIA_API` | **是** | - | **Hysteria 2 统一集成端点**（自动配置 Auth 监听与流量采集）<br>• 单机部署：`127.0.0.1`<br>• Docker 编排：`hysteria`<br>• URL 形式：`http://127.0.0.1:7654`<br>• 自定义端口：`0.0.0.0:9999@http://127.0.0.1:7654/traffic` |
+| `HYSTERIA_API` | **是** | - | **Hysteria 2 内部流量统计接口地址**<br>• 单机部署：`http://127.0.0.1:7654`<br>• Docker 编排：`http://hysteria:7654` |
 | `NODE_TYPE` | 否 | `hysteria` | 节点类型 |
 | `SYNC_INTERVAL` | 否 | `15` | 用户白名单同步周期（秒） |
 | `PUSH_INTERVAL` | 否 | `60` | 流量上报与心跳周期（秒） |
@@ -107,15 +107,15 @@ obfs:
   salamander:
     password: your_salamander_password
 
-# HTTP 鉴权对接 hyboard-bridge
+# HTTP 鉴权对接 hyboard-bridge (固定在 9999 端口)
 auth:
   type: http
   http:
-    url: http://hyboard-bridge:9999/auth  # 若容器在同一网络；单机部署填 http://127.0.0.1:9999/auth
+    url: http://hyboard-bridge:9999/auth  # Docker 容器互联；单机部署填 http://127.0.0.1:9999/auth
 
-# 流量统计接口供 hyboard-bridge 采集
+# 流量统计接口供 hyboard-bridge 采集 (默认 7654 端口)
 trafficStats:
-  listen: 0.0.0.0:7654                   # 或 127.0.0.1:7654
+  listen: 0.0.0.0:7654                   # 单机部署可填 127.0.0.1:7654
 
 # 伪装网站（可选）
 masquerade:
@@ -149,7 +149,7 @@ cat << 'EOF' > .env
 API_HOST=https://panel.example.com
 API_KEY=your_uniproxy_token_here
 NODE_ID=1
-HYSTERIA_API=hysteria
+HYSTERIA_API=http://hysteria:7654
 EOF
 ```
 
@@ -167,7 +167,7 @@ services:
       - .env
     environment:
       - RUST_LOG=info
-      - HYSTERIA_API=hysteria
+      - HYSTERIA_API=http://hysteria:7654
     networks:
       - hyboard-net
 
