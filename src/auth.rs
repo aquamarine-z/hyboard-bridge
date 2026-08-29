@@ -135,7 +135,7 @@ pub fn create_auth_router(registry: Arc<NodeRegistry>) -> Router {
         .route("/auth", post(handle_auth_universal))
         .route("/auth/{node_key}", post(handle_auth_targeted))
         .route("/health", get(handle_health))
-        .route("/", get(handle_health))
+        .route("/", get(handle_health).post(handle_auth_universal))
         .with_state(registry)
 }
 
