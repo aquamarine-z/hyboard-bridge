@@ -3,7 +3,6 @@
 //! Implements X-board / V2board UniProxy protocol for periodic user whitelist
 //! synchronization and incremental traffic reporting / heartbeat maintenance.
 
-use crate::config::Config;
 use crate::traffic::TrafficCollector;
 use crate::user::{UserInfo, UserManager};
 use anyhow::{Context, Result};
@@ -40,18 +39,18 @@ struct NestedUserData {
 }
 
 impl PanelClient {
-    /// Create a new `PanelClient` from configuration.
-    pub fn new(config: &Config) -> Self {
+    /// Create a new `PanelClient` with given panel credentials.
+    pub fn new(api_host: &str, api_key: &str, node_id: u32, node_type: &str) -> Self {
         let http_client = Client::builder()
             .timeout(Duration::from_secs(15))
             .build()
             .unwrap_or_default();
 
         Self {
-            api_host: config.api_host.clone(),
-            api_key: config.api_key.clone(),
-            node_id: config.node_id,
-            node_type: config.node_type.clone(),
+            api_host: api_host.trim_end_matches('/').to_string(),
+            api_key: api_key.to_string(),
+            node_id,
+            node_type: node_type.to_string(),
             http_client,
         }
     }

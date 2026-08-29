@@ -1,0 +1,40 @@
+# ==============================================================================
+# hyboard-bridge 多节点与多面板配置文件模板 (config.toml)
+# ==============================================================================
+
+[global]
+listen_port = 9999              # 本程序 HTTP 鉴权服务监听端口 (统一提供 Webhook)
+rust_log = "info"               # 日志级别: trace, debug, info, warn, error
+
+# ------------------------------------------------------------------------------
+# 场景一：同一个 Hysteria 2 节点（端口 7654），同时服务【主站】和【备站】两个面板
+# ------------------------------------------------------------------------------
+[[nodes]]
+tag = "hk_panel_a"                              # 节点标识，对应 Webhook 路径: /auth/hk_panel_a
+api_host = "https://xboard-a.example.com"       # 面板 A 地址
+api_key = "token_for_panel_a"                   # 面板 A 的通讯密钥
+node_id = 1                                     # 面板 A 里的节点 ID
+hysteria_base_url = "http://127.0.0.1:7654"     # 对应的 Hysteria 2 实例
+sync_interval = 15                              # 用户同步周期(秒)
+push_interval = 60                              # 流量推送与心跳周期(秒)
+
+[[nodes]]
+tag = "hk_panel_b"                              # 节点标识，对应 Webhook 路径: /auth/hk_panel_b
+api_host = "https://xboard-b.example.com"       # 面板 B 地址
+api_key = "token_for_panel_b"                   # 面板 B 的通讯密钥
+node_id = 101                                   # 面板 B 里的节点 ID
+hysteria_base_url = "http://127.0.0.1:7654"     # 指向同一个 Hysteria 2 实例（自动聚合用户与分账流量）
+sync_interval = 15
+push_interval = 60
+
+# ------------------------------------------------------------------------------
+# 场景二：同一台机器上的另一个独立 Hysteria 2 节点（端口 7655）
+# ------------------------------------------------------------------------------
+[[nodes]]
+tag = "us_node"                                 # 对应 Webhook 路径: /auth/us_node
+api_host = "https://xboard-a.example.com"
+api_key = "token_for_panel_a"
+node_id = 2
+hysteria_base_url = "http://127.0.0.1:7655"
+sync_interval = 15
+push_interval = 60

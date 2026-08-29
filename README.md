@@ -1,7 +1,7 @@
 # hyboard-bridge
 
 <p align="center">
-  <strong>基于 Rust Tokio / Axum 的工业级高性能 X-board / V2board 与 Hysteria 2 官方内核桥接守护套件</strong>
+  <strong>基于 Rust Tokio / Axum 的工业级高性能 X-board / V2board 多节点与多面板 Hysteria 2 桥接守护套件</strong>
 </p>
 
 <p align="center">
@@ -17,248 +17,166 @@
 
 ## 📖 项目简介
 
-`hyboard-bridge` 专为 **X-board / V2board** 面板与 **Hysteria 2 官方原生核心 (v2.12+)** 深度适配打造。作为两者的桥接控制中枢，它通过 $O(1)$ 无锁内存哈希表提供微秒级鉴权响应，并实现了精准的增量流量上报、掉线续传缓冲与节点在线心跳维持。
+`hyboard-bridge` 专为 **X-board / V2board** 面板与 **Hysteria 2 官方原生核心 (v2.12+)** 深度适配打造。
+
+作为高性能桥接中枢，它不仅支持单节点极简部署，还原生支持 **「单节点同时服务多个面板」** 与 **「单守护进程集中管理多个独立节点」** 的矩阵架构，提供微秒级无锁内存鉴权、精准增量流量分账上报以及节点在线心跳维持。
 
 ---
 
 ## 🌟 核心特性
 
-- **⚡ 微秒级无锁内存鉴权**：
-  采用并发数据结构 `DashMap` 构建 $O(1)$ 内存白名单，Axum 异步 Webhook 处理 Hysteria 2 `POST /auth` 请求，支持万级高并发长短连接瞬间握手。
-- **📊 精准增量流量上报与抗重启**：
-  实时对接 Hysteria 2 `trafficStats` 接口计算 Tx/Rx 增量，自动识别内核重启/计数器重置状态，精准映射面板用户 ID。
+- **⚡ 多面板聚合与微秒级鉴权**：
+  单个 Hysteria 2 节点端口可同时接入多个不同面板，用户白名单在内存中自动聚合检索（$O(1)$ 复杂度），任意面板的用户均可无感接入。
+- **📊 跨面板精准流量分账**：
+  从 Hysteria 2 采集流量后，依据用户归属的面板与 `node_id` 自动精准分流上报，绝不串账，各面板独立维持在线心跳。
+- **🏢 单进程多节点纳管**：
+  一台服务器上的多个 Hysteria 2 实例（不同端口）由一个轻量 `hyboard-bridge` 进程统一管理调度，资源占用极低。
 - **🛡️ 零丢包容灾与断网缓冲机制**：
-  面板短时间宕机或网络波动时，自动保留最后一次用户白名单快照；未成功上报的流量暂存于内存缓冲队列，网络恢复后自动累积续传，杜绝漏计费。
+  某面板短时间宕机时，自动保留最后一次白名单快照，未成功推送的流量在内存缓冲队列中排队，面板恢复后自动续传。
 - **🐳 极简容器化交付**：
   基于 Rust Alpine 多阶段静态编译，构建出的最终 Docker 镜像体积 **`< 15MB`**，运行时内存占用 **`< 10MB`**。
 
 ---
 
-## 🏗️ 系统架构设计
+## 🏗️ 系统拓扑架构
 
 ```mermaid
 flowchart TD
-    subgraph Panel ["X-board / V2board 面板"]
-        API["UniProxy API Controller"]
+    subgraph Panels ["X-board / V2board 面板池"]
+        PanelA["主站面板 A (Node 1)"]
+        PanelB["备站面板 B (Node 101)"]
+        PanelC["独立面板 C (Node 2)"]
     end
 
-    subgraph Bridge ["hyboard-bridge 守护进程"]
-        SyncTask["用户同步任务 (15s)"]
-        PushTask["流量推送 & 心跳 (60s)"]
-        UserManager["UserManager (DashMap O(1) 白名单)"]
-        TrafficCollector["TrafficCollector (差值计算 & 缓冲队列)"]
-        AuthServer["Axum Auth Webhook (:9999/auth)"]
+    subgraph Bridge ["hyboard-bridge 统一守护中枢 (:9999)"]
+        Router["Axum Webhook 智能路由"]
+        Node1["Node 1 (聚合 A & B 白名单)"]
+        Node2["Node 2 (独立 C 白名单)"]
     end
 
-    subgraph Core ["Hysteria 2 官方内核"]
-        HyServer["Hysteria 2 Server (:443 UDP/TCP)"]
-        HyTraffic["trafficStats API (:7654)"]
+    subgraph Cores ["Hysteria 2 官方内核"]
+        Hy1["Hysteria 2 Core 1 (:443 UDP)"]
+        Hy2["Hysteria 2 Core 2 (:8443 UDP)"]
     end
 
-    Client["Hysteria 2 客户端"] -->|1. QUIC 握手连接| HyServer
-    HyServer -->|2. POST /auth 鉴权| AuthServer
-    AuthServer -->|3. 查询白名单| UserManager
-    UserManager -->|4. 返回 ok: true / false| AuthServer
-    AuthServer -->|5. 鉴权响应| HyServer
+    PanelA <-->|同步用户 / 上报流量| Node1
+    PanelB <-->|同步用户 / 上报流量| Node1
+    PanelC <-->|同步用户 / 上报流量| Node2
 
-    API -->|GET /UniProxy/user| SyncTask
-    SyncTask -->|更新白名单| UserManager
+    Hy1 -->|POST /auth/hk_1| Router
+    Router --> Node1
+    Hy2 -->|POST /auth/us_2| Router
+    Router --> Node2
 
-    HyServer -.->|记录流量| HyTraffic
-    PushTask -->|GET /traffic 采集| HyTraffic
-    HyTraffic -->|原始流量快照| TrafficCollector
-    TrafficCollector -->|差值增量| PushTask
-    PushTask -->|POST /UniProxy/push| API
+    Node1 -.->|GET :7654/traffic| Hy1
+    Node2 -.->|GET :7655/traffic| Hy2
 ```
 
 ---
 
-## ⚙️ 环境变量与配置参数
+## ⚙️ 配置文件说明 (`config.toml`)
 
-| 变量名 | 必填 | 默认值 | 说明与示例 |
-| :--- | :---: | :---: | :--- |
-| `API_HOST` | **是** | - | 面板地址，如 `https://panel.example.com` |
-| `API_KEY` / `TOKEN` | **是** | - | X-board 面板中的通讯密钥 (UniProxy Token) |
-| `NODE_ID` | **是** | - | 面板中分配的节点 ID（整数，如 `1`） |
-| `LISTEN_PORT` | 否 | `9999` | **本程序（hyboard-bridge）鉴权服务监听端口** |
-| `HYSTERIA_BASE_URL` | **是** | - | **Hysteria 2 官方内核 Base URL（不含子路径）**<br>• 单机部署：`http://127.0.0.1:7654`<br>• Docker 编排：`http://hysteria:7654` |
-| `NODE_TYPE` | 否 | `hysteria` | 节点类型 |
-| `SYNC_INTERVAL` | 否 | `15` | 用户白名单同步周期（秒） |
-| `PUSH_INTERVAL` | 否 | `60` | 流量上报与心跳周期（秒） |
-| `RUST_LOG` | 否 | `info` | 日志级别（`trace`, `debug`, `info`, `warn`, `error`） |
+推荐使用 `config.toml` 进行多节点与多面板配置（支持通过环境变量 `CONFIG_FILE=./config.toml` 指定路径）：
+
+```toml
+[global]
+listen_port = 9999              # 本程序 Webhook 统一鉴权监听端口
+rust_log = "info"               # 日志级别
+
+# ------------------------------------------------------------------------------
+# 场景一：同一个 Hysteria 2 节点（7654端口），同时服务【主站】和【备站】两个面板
+# ------------------------------------------------------------------------------
+[[nodes]]
+tag = "hk_panel_a"                              # 对应 Webhook 路径: /auth/hk_panel_a
+api_host = "https://xboard-a.example.com"       # 面板 A 地址
+api_key = "token_for_panel_a"                   # 面板 A 通讯密钥
+node_id = 1                                     # 面板 A 里的节点 ID
+hysteria_base_url = "http://127.0.0.1:7654"     # Hysteria 2 流量接口
+sync_interval = 15                              # 用户同步周期(秒)
+push_interval = 60                              # 流量推送周期(秒)
+
+[[nodes]]
+tag = "hk_panel_b"                              # 对应 Webhook 路径: /auth/hk_panel_b
+api_host = "https://xboard-b.example.com"       # 面板 B 地址
+api_key = "token_for_panel_b"                   # 面板 B 通讯密钥
+node_id = 101                                   # 面板 B 里的节点 ID
+hysteria_base_url = "http://127.0.0.1:7654"     # 指向同一个 Hysteria 实例（自动聚合用户与分流流量）
+sync_interval = 15
+push_interval = 60
+
+# ------------------------------------------------------------------------------
+# 场景二：同一台机器上的另一个独立 Hysteria 2 节点（7655端口）
+# ------------------------------------------------------------------------------
+[[nodes]]
+tag = "us_node"                                 # 对应 Webhook 路径: /auth/us_node
+api_host = "https://xboard-a.example.com"
+api_key = "token_for_panel_a"
+node_id = 2
+hysteria_base_url = "http://127.0.0.1:7655"
+sync_interval = 15
+push_interval = 60
+```
+
+> **提示**：如果是最基础的单节点单面板部署，亦可直接使用 `.env` 环境变量配置，无需创建 `config.toml`。
 
 ---
 
-## 📄 Hysteria 2 官方内核配置示例 (`server.yaml`)
+## 📄 Hysteria 2 官方内核配置对接 (`server.yaml`)
 
-在使用 `hyboard-bridge` 时，您的 Hysteria 2 官方内核仅需配置 `auth.http` 和 `trafficStats` 对接 bridge：
+在 Hysteria 2 官方内核配置中，根据节点 tag 或统一路由填写 `auth.http`：
 
 ```yaml
-# 监听端口
 listen: :443
 
-# TLS 证书
 tls:
   cert: /etc/hysteria/certs/server.crt
   key: /etc/hysteria/certs/server.key
 
-# Salamander 混淆（可选，建议开启）
+# Salamander 混淆（可选）
 obfs:
   type: salamander
   salamander:
     password: your_salamander_password
 
-# HTTP 鉴权对接 hyboard-bridge (端口对应 LISTEN_PORT，默认 9999)
+# HTTP 鉴权对接 hyboard-bridge
 auth:
   type: http
   http:
-    url: http://hyboard-bridge:9999/auth  # Docker 容器互联；单机部署填 http://127.0.0.1:9999/auth
+    # 多节点模式可带 tag: http://hyboard-bridge:9999/auth/hk_panel_a
+    # 单节点或共享节点直接填: http://hyboard-bridge:9999/auth
+    url: http://hyboard-bridge:9999/auth
 
-# 流量统计接口供 hyboard-bridge 采集 (端口对应 HYSTERIA_BASE_URL，默认 7654)
+# 流量统计接口
 trafficStats:
-  listen: 0.0.0.0:7654                   # 单机部署可填 127.0.0.1:7654
-
-# 伪装网站（可选）
-masquerade:
-  type: proxy
-  proxy:
-    url: https://news.ycombinator.com
-    rewriteHost: true
+  listen: 0.0.0.0:7654
 ```
 
 ---
 
-## 🚀 快速开始与部署
+## 🚀 快速启动与部署
 
-### 方式一：Docker Compose 一键部署（推荐）
+### 方式一：Docker Compose 部署（推荐）
 
-#### 1. 准备目录结构与证书
 ```bash
 mkdir -p /opt/hyboard && cd /opt/hyboard
-mkdir -p certs
-# 放入 ./certs/server.crt, ./certs/server.key 及 ./server.yaml
-```
-
-#### 2. 配置 `.env` 环境变量
-创建并编辑 `.env`：
-```bash
-cat << 'EOF' > .env
-API_HOST=https://panel.example.com
-API_KEY=your_uniproxy_token_here
-NODE_ID=1
-LISTEN_PORT=9999
-HYSTERIA_BASE_URL=http://hysteria:7654
-EOF
-```
-
-#### 3. 编写 `docker-compose.yml`
-```yaml
-version: '3.8'
-
-services:
-  hyboard-bridge:
-    image: ghcr.io/yourusername/hyboard-bridge:latest
-    # 或本地构建: build: .
-    container_name: hyboard-bridge
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - RUST_LOG=info
-      - LISTEN_PORT=9999
-      - HYSTERIA_BASE_URL=http://hysteria:7654
-    networks:
-      - hyboard-net
-
-  hysteria:
-    image: apernet/hysteria:latest
-    container_name: hysteria-core
-    restart: unless-stopped
-    command: ["server", "-c", "/etc/hysteria/server.yaml"]
-    volumes:
-      - ./server.yaml:/etc/hysteria/server.yaml:ro
-      - ./certs:/etc/hysteria/certs:ro
-    ports:
-      - "443:443/udp"
-      - "443:443/tcp"
-    networks:
-      - hyboard-net
-    depends_on:
-      - hyboard-bridge
-
-networks:
-  hyboard-net:
-    driver: bridge
-```
-
-#### 4. 启动服务
-```bash
+# 1. 放置 config.toml
+cp config.example.toml config.toml
+# 2. 放置证书与 server.yaml
+# 3. 启动
 docker compose up -d
 docker compose logs -f
 ```
 
 ---
 
-### 方式二：本地 Rust 原生构建与运行
+### 方式二：本地原生构建与运行
 
-#### 1. 编译
 ```bash
-# 静态极速编译（开启 LTO 与体积优化）
+# 1. 编译
 cargo build --release
-```
-编译产物位于 `target/release/hyboard-bridge`。
 
-#### 2. 运行
-```bash
-cp .env.example .env
-# 编辑配置
-nano .env
-
+# 2. 启动
 ./target/release/hyboard-bridge
-```
-
----
-
-## 📋 X-board 面板配置指南
-
-在 X-board / V2board 后台添加或配置 Hysteria 节点：
-
-1. **节点类型**：选择 `Hysteria`（或 `Hysteria 2`）；
-2. **节点地址**：填写您的服务器解析域名（如 `hy2.yourdomain.com`）；
-3. **连接端口**：填写 `443`（或对应监听端口）；
-4. **混淆设置**：
-   - 混淆协议：`salamander`
-   - 混淆密码：填写与 `server.yaml` 中完全一致的密码；
-5. **TLS 设置**：
-   - Server Name (SNI)：填写您的证书域名；
-   - 允许不安全证书：若为正式 Let's Encrypt 证书请填 `false`；
-6. 保存后在用户端导入订阅即可极速连接！
-
----
-
-## ⚡ Linux 系统级 UDP 与 QUIC 网络调优
-
-为了发挥 Hysteria 2 与 `hyboard-bridge` 的极致性能，建议在宿主机执行以下内核参数优化：
-
-```bash
-cat << 'EOF' >> /etc/sysctl.d/99-hysteria.conf
-# 增加网络缓冲区大小 (针对高带宽 UDP/QUIC)
-net.core.rmem_max = 67108864
-net.core.wmem_max = 67108864
-net.core.rmem_default = 33554432
-net.core.wmem_default = 33554432
-
-# 启用 BBR 拥塞控制
-net.core.default_qdisc = fq
-net.ipv4.tcp_congestion_control = bbr
-
-# 提升连接队列深度
-net.core.somaxconn = 65535
-net.ipv4.udp_rmem_min = 8192
-net.ipv4.udp_wmem_min = 8192
-EOF
-
-sysctl --system
 ```
 
 ---

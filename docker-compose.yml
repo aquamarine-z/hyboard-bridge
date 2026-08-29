@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   # ============================================================================
-  # 1. hyboard-bridge: Orchestrator, Auth Webhook & Traffic Reporter
+  # 1. hyboard-bridge: Orchestrator, Multi-Node Webhook & Traffic Reporter
   # ============================================================================
   hyboard-bridge:
     build:
@@ -11,25 +11,24 @@ services:
     image: hyboard-bridge:latest
     container_name: hyboard-bridge
     restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - RUST_LOG=info
-      - LISTEN_PORT=9999
-      - HYSTERIA_BASE_URL=http://hysteria:7654
+    volumes:
+      # 单节点模式可使用 .env；多节点/多面板模式推荐直接挂载 config.toml:
+      - ./config.toml:/app/config.toml:ro
+    ports:
+      - "9999:9999"
     networks:
       - hyboard-net
 
   # ============================================================================
-  # 2. Hysteria 2 Official Core (apernet/hysteria)
+  # 2. Hysteria 2 Node 1 (HK Node - e.g. Port 443 / trafficStats 7654)
   # ============================================================================
-  hysteria:
+  hysteria-node1:
     image: apernet/hysteria:latest
-    container_name: hysteria-core
+    container_name: hysteria-node1
     restart: unless-stopped
-    command: ["server", "-c", "/etc/hysteria/server.yaml"]
+    command: ["server", "-c", "/etc/hysteria/server-node1.yaml"]
     volumes:
-      - ./server.yaml:/etc/hysteria/server.yaml:ro
+      - ./server-node1.yaml:/etc/hysteria/server-node1.yaml:ro
       - ./certs:/etc/hysteria/certs:ro
     ports:
       - "443:443/udp"
