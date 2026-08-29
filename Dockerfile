@@ -39,7 +39,8 @@ COPY --from=builder /app/target/release/hyboard-bridge /usr/local/bin/hyboard-br
 
 # Set default environment
 ENV RUST_LOG=info \
-    HYSTERIA_API=http://hysteria:7654
+    LISTEN_PORT=9999 \
+    HYSTERIA_BASE_URL=http://hysteria:7654
 
 # Expose HTTP Auth webhook port
 EXPOSE 9999

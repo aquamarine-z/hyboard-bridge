@@ -80,7 +80,8 @@ flowchart TD
 | `API_HOST` | **是** | - | 面板地址，如 `https://panel.example.com` |
 | `API_KEY` / `TOKEN` | **是** | - | X-board 面板中的通讯密钥 (UniProxy Token) |
 | `NODE_ID` | **是** | - | 面板中分配的节点 ID（整数，如 `1`） |
-| `HYSTERIA_API` | **是** | - | **Hysteria 2 内部流量统计接口地址**<br>• 单机部署：`http://127.0.0.1:7654`<br>• Docker 编排：`http://hysteria:7654` |
+| `LISTEN_PORT` | 否 | `9999` | **本程序（hyboard-bridge）鉴权服务监听端口** |
+| `HYSTERIA_BASE_URL` | **是** | - | **Hysteria 2 官方内核 Base URL（不含子路径）**<br>• 单机部署：`http://127.0.0.1:7654`<br>• Docker 编排：`http://hysteria:7654` |
 | `NODE_TYPE` | 否 | `hysteria` | 节点类型 |
 | `SYNC_INTERVAL` | 否 | `15` | 用户白名单同步周期（秒） |
 | `PUSH_INTERVAL` | 否 | `60` | 流量上报与心跳周期（秒） |
@@ -107,13 +108,13 @@ obfs:
   salamander:
     password: your_salamander_password
 
-# HTTP 鉴权对接 hyboard-bridge (固定在 9999 端口)
+# HTTP 鉴权对接 hyboard-bridge (端口对应 LISTEN_PORT，默认 9999)
 auth:
   type: http
   http:
     url: http://hyboard-bridge:9999/auth  # Docker 容器互联；单机部署填 http://127.0.0.1:9999/auth
 
-# 流量统计接口供 hyboard-bridge 采集 (默认 7654 端口)
+# 流量统计接口供 hyboard-bridge 采集 (端口对应 HYSTERIA_BASE_URL，默认 7654)
 trafficStats:
   listen: 0.0.0.0:7654                   # 单机部署可填 127.0.0.1:7654
 
@@ -131,29 +132,26 @@ masquerade:
 
 ### 方式一：Docker Compose 一键部署（推荐）
 
-#### 1. 准备目录结构
+#### 1. 准备目录结构与证书
 ```bash
 mkdir -p /opt/hyboard && cd /opt/hyboard
 mkdir -p certs
+# 放入 ./certs/server.crt, ./certs/server.key 及 ./server.yaml
 ```
 
-#### 2. 放置 TLS 证书与 `server.yaml`
-- `./certs/server.crt`
-- `./certs/server.key`
-- `./server.yaml`（参考上述 Hysteria 2 配置模板）
-
-#### 3. 配置 `.env` 环境变量
+#### 2. 配置 `.env` 环境变量
 创建并编辑 `.env`：
 ```bash
 cat << 'EOF' > .env
 API_HOST=https://panel.example.com
 API_KEY=your_uniproxy_token_here
 NODE_ID=1
-HYSTERIA_API=http://hysteria:7654
+LISTEN_PORT=9999
+HYSTERIA_BASE_URL=http://hysteria:7654
 EOF
 ```
 
-#### 4. 编写 `docker-compose.yml`
+#### 3. 编写 `docker-compose.yml`
 ```yaml
 version: '3.8'
 
@@ -167,7 +165,8 @@ services:
       - .env
     environment:
       - RUST_LOG=info
-      - HYSTERIA_API=http://hysteria:7654
+      - LISTEN_PORT=9999
+      - HYSTERIA_BASE_URL=http://hysteria:7654
     networks:
       - hyboard-net
 
@@ -192,7 +191,7 @@ networks:
     driver: bridge
 ```
 
-#### 5. 启动服务
+#### 4. 启动服务
 ```bash
 docker compose up -d
 docker compose logs -f
