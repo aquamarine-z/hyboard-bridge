@@ -23,6 +23,8 @@ pub struct TrafficRecord {
     pub rx: u64,
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 /// Thread-safe traffic collector and delta accumulator.
 #[derive(Debug)]
 pub struct TrafficCollector {
@@ -36,6 +38,8 @@ pub struct TrafficCollector {
     last_snapshot: Mutex<HashMap<String, TrafficRecord>>,
     /// Accumulated unpushed traffic deltas { user_id -> (upload_bytes, download_bytes) }
     pending_deltas: Mutex<HashMap<u32, (u64, u64)>>,
+    /// Indicates if this is the very first time we are fetching traffic since startup
+    is_first_fetch: AtomicBool,
 }
 
 impl TrafficCollector {
@@ -52,6 +56,7 @@ impl TrafficCollector {
             user_manager,
             last_snapshot: Mutex::new(HashMap::new()),
             pending_deltas: Mutex::new(HashMap::new()),
+            is_first_fetch: AtomicBool::new(true),
         }
     }
 
@@ -92,6 +97,7 @@ impl TrafficCollector {
         let mut last_snap = self.last_snapshot.lock().unwrap();
         let mut pending = self.pending_deltas.lock().unwrap();
         let mut active_users = 0;
+        let is_first = self.is_first_fetch.swap(false, Ordering::Relaxed);
 
         for (user_key, current_record) in &current_stats {
             // Resolve user_id: first try parsing as integer, then look up via UUID
@@ -110,6 +116,10 @@ impl TrafficCollector {
             };
 
             let last_record = last_snap.get(user_key).copied().unwrap_or_default();
+
+            if is_first {
+                continue;
+            }
 
             // Calculate incremental delta with overflow / restart protection
             let delta_tx = if current_record.tx >= last_record.tx {
@@ -234,6 +244,9 @@ mod tests {
             "user-uuid-2".to_string(),
             TrafficRecord { tx: 2000, rx: 800 },
         );
+
+        // Process an empty init tick to clear is_first_fetch flag
+        collector.process_raw_stats(HashMap::new());
 
         let active = collector.process_raw_stats(tick1);
         assert_eq!(active, 2);
