@@ -202,6 +202,7 @@ mod tests {
                 id: 10,
                 uuid: "user-hk-uuid".to_string(),
                 speed_limit: 0,
+                device_limit: None,
             }]);
 
         // Add user to node 2
@@ -211,6 +212,7 @@ mod tests {
                 id: 20,
                 uuid: "user-us-uuid".to_string(),
                 speed_limit: 0,
+                device_limit: None,
             }]);
 
         let app = create_auth_router(registry);

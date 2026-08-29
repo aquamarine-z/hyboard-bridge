@@ -209,11 +209,13 @@ mod tests {
                 id: 101,
                 uuid: "user-uuid-1".to_string(),
                 speed_limit: 0,
+                device_limit: None,
             },
             UserInfo {
                 id: 102,
                 uuid: "user-uuid-2".to_string(),
                 speed_limit: 0,
+                device_limit: None,
             },
         ]);
 

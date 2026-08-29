@@ -4,8 +4,16 @@
 //! authentication requests using `DashMap`.
 
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
+
+fn deserialize_null_as_zero<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<u32>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(0))
+}
 
 /// User metadata retrieved from X-board / V2board UniProxy API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -15,8 +23,11 @@ pub struct UserInfo {
     /// User UUID / Password for Hysteria 2 connection
     pub uuid: String,
     /// Speed limit in bytes/sec or Mbps (0 for unlimited)
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_zero")]
     pub speed_limit: u32,
+    /// Device limit (optional)
+    #[serde(default)]
+    pub device_limit: Option<u32>,
 }
 
 /// Thread-safe user cache for high-throughput authentication and ID mapping.
@@ -149,6 +160,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_deserialize_null_speed_limit() {
+        let json = r#"{"id": 1, "uuid": "96162785-8d34-46ae-b37b-ccc468989492", "speed_limit": null, "device_limit": null}"#;
+        let user: UserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(user.id, 1);
+        assert_eq!(user.uuid, "96162785-8d34-46ae-b37b-ccc468989492");
+        assert_eq!(user.speed_limit, 0);
+        assert_eq!(user.device_limit, None);
+    }
+
+    #[test]
     fn test_user_manager_crud_and_auth() {
         let manager = UserManager::new();
         assert_eq!(manager.user_count(), 0);
@@ -158,11 +179,13 @@ mod tests {
                 id: 1,
                 uuid: "6BA7B810-9DAD-11D1-80B4-00C04FD430C8".to_string(),
                 speed_limit: 1000,
+                device_limit: None,
             },
             UserInfo {
                 id: 2,
                 uuid: "d3b07384-d113-40e1-bb97-b2f7f9859f9a".to_string(),
                 speed_limit: 0,
+                device_limit: Some(2),
             },
         ];
 
@@ -196,6 +219,7 @@ mod tests {
             id: 2,
             uuid: "d3b07384-d113-40e1-bb97-b2f7f9859f9a".to_string(),
             speed_limit: 5000, // speed limit updated
+            device_limit: None,
         }];
 
         let (total2, changed2) = manager.update_users(new_users);
