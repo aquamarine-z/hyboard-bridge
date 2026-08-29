@@ -64,7 +64,12 @@ impl TrafficCollector {
             .get(&self.hysteria_url)
             .send()
             .await
-            .with_context(|| format!("Failed to request Hysteria 2 traffic stats from {}", self.hysteria_url))?;
+            .with_context(|| {
+                format!(
+                    "Failed to request Hysteria 2 traffic stats from {}",
+                    self.hysteria_url
+                )
+            })?;
 
         if !resp.status().is_success() {
             anyhow::bail!(
@@ -167,13 +172,14 @@ impl TrafficCollector {
         let mut pending = self.pending_deltas.lock().unwrap();
         for (id_str, &[pushed_u, pushed_d]) in pushed {
             if let Ok(user_id) = id_str.parse::<u32>()
-                && let Some(entry) = pending.get_mut(&user_id) {
-                    entry.0 = entry.0.saturating_sub(pushed_u);
-                    entry.1 = entry.1.saturating_sub(pushed_d);
-                    if entry.0 == 0 && entry.1 == 0 {
-                        pending.remove(&user_id);
-                    }
+                && let Some(entry) = pending.get_mut(&user_id)
+            {
+                entry.0 = entry.0.saturating_sub(pushed_u);
+                entry.1 = entry.1.saturating_sub(pushed_d);
+                if entry.0 == 0 && entry.1 == 0 {
+                    pending.remove(&user_id);
                 }
+            }
         }
     }
 
@@ -218,8 +224,14 @@ mod tests {
 
         // 1. First collection tick
         let mut tick1 = HashMap::new();
-        tick1.insert("user-uuid-1".to_string(), TrafficRecord { tx: 1000, rx: 500 });
-        tick1.insert("user-uuid-2".to_string(), TrafficRecord { tx: 2000, rx: 800 });
+        tick1.insert(
+            "user-uuid-1".to_string(),
+            TrafficRecord { tx: 1000, rx: 500 },
+        );
+        tick1.insert(
+            "user-uuid-2".to_string(),
+            TrafficRecord { tx: 2000, rx: 800 },
+        );
 
         let active = collector.process_raw_stats(tick1);
         assert_eq!(active, 2);
@@ -235,8 +247,14 @@ mod tests {
 
         // 2. Second collection tick (incremental)
         let mut tick2 = HashMap::new();
-        tick2.insert("user-uuid-1".to_string(), TrafficRecord { tx: 1200, rx: 600 }); // +200 tx, +100 rx
-        tick2.insert("user-uuid-2".to_string(), TrafficRecord { tx: 2000, rx: 800 }); // unchanged
+        tick2.insert(
+            "user-uuid-1".to_string(),
+            TrafficRecord { tx: 1200, rx: 600 },
+        ); // +200 tx, +100 rx
+        tick2.insert(
+            "user-uuid-2".to_string(),
+            TrafficRecord { tx: 2000, rx: 800 },
+        ); // unchanged
 
         let active2 = collector.process_raw_stats(tick2);
         assert_eq!(active2, 1);

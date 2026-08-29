@@ -5,11 +5,11 @@
 
 use crate::user::UserManager;
 use axum::{
+    Json, Router,
     extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -151,7 +151,9 @@ mod tests {
         let resp_valid = app.clone().oneshot(req_valid).await.unwrap();
         assert_eq!(resp_valid.status(), StatusCode::OK);
 
-        let body_bytes = axum::body::to_bytes(resp_valid.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(resp_valid.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let auth_resp: AuthResponse = serde_json::from_slice(&body_bytes).unwrap();
         assert!(auth_resp.ok);
         assert_eq!(auth_resp.id.as_deref(), Some("test-valid-uuid-1234"));
@@ -169,9 +171,14 @@ mod tests {
         let resp_invalid = app.oneshot(req_invalid).await.unwrap();
         assert_eq!(resp_invalid.status(), StatusCode::OK);
 
-        let body_bytes_inv = axum::body::to_bytes(resp_invalid.into_body(), usize::MAX).await.unwrap();
+        let body_bytes_inv = axum::body::to_bytes(resp_invalid.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let auth_resp_inv: AuthResponse = serde_json::from_slice(&body_bytes_inv).unwrap();
         assert!(!auth_resp_inv.ok);
-        assert_eq!(auth_resp_inv.msg.as_deref(), Some("user not found or expired"));
+        assert_eq!(
+            auth_resp_inv.msg.as_deref(),
+            Some("user not found or expired")
+        );
     }
 }

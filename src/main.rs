@@ -51,7 +51,10 @@ impl HyboardBridge {
         match self.panel_client.fetch_users().await {
             Ok(users) => {
                 let (total, _) = self.user_manager.update_users(users);
-                tracing::info!(active_users = total, "Initial user synchronization complete");
+                tracing::info!(
+                    active_users = total,
+                    "Initial user synchronization complete"
+                );
             }
             Err(e) => {
                 tracing::warn!(

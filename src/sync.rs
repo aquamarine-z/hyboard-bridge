@@ -115,7 +115,10 @@ impl PanelClient {
             .with_context(|| "Failed to send traffic push request to panel")?;
 
         if !resp.status().is_success() {
-            anyhow::bail!("Panel traffic push API returned HTTP status {}", resp.status());
+            anyhow::bail!(
+                "Panel traffic push API returned HTTP status {}",
+                resp.status()
+            );
         }
 
         Ok(())

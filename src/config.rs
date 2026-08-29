@@ -80,7 +80,8 @@ impl Config {
             .or_else(|_| std::env::var("HYSTERIA_API"))
             .context("Environment variable HYSTERIA_BASE_URL is required (e.g. http://127.0.0.1:7654 or http://hysteria:7654)")?;
 
-        let (hysteria_base_url, hysteria_traffic_url) = Self::normalize_hysteria_urls(&raw_base_url)?;
+        let (hysteria_base_url, hysteria_traffic_url) =
+            Self::normalize_hysteria_urls(&raw_base_url)?;
 
         Ok(Self {
             api_host,
@@ -145,7 +146,8 @@ mod tests {
         assert_eq!(base, "http://127.0.0.1:7654");
         assert_eq!(traffic, "http://127.0.0.1:7654/traffic");
 
-        let (base, traffic) = Config::normalize_hysteria_urls("http://127.0.0.1:7654/traffic").unwrap();
+        let (base, traffic) =
+            Config::normalize_hysteria_urls("http://127.0.0.1:7654/traffic").unwrap();
         assert_eq!(base, "http://127.0.0.1:7654");
         assert_eq!(traffic, "http://127.0.0.1:7654/traffic");
     }

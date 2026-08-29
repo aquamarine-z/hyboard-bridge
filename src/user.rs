@@ -49,9 +49,10 @@ impl UserManager {
         // Fallback: look up in lowercase if UUID was sent in mixed case
         let lower = trimmed.to_lowercase();
         if lower != trimmed
-            && let Some(user) = self.users_by_uuid.get(&lower) {
-                return Some(user.clone());
-            }
+            && let Some(user) = self.users_by_uuid.get(&lower)
+        {
+            return Some(user.clone());
+        }
         None
     }
 
@@ -63,9 +64,10 @@ impl UserManager {
         }
         let lower = trimmed.to_lowercase();
         if lower != trimmed
-            && let Some(user) = self.users_by_uuid.get(&lower) {
-                return Some(user.id);
-            }
+            && let Some(user) = self.users_by_uuid.get(&lower)
+        {
+            return Some(user.id);
+        }
         None
     }
 
@@ -79,7 +81,9 @@ impl UserManager {
     #[allow(dead_code)]
     pub fn get_user_by_id(&self, id: u32) -> Option<UserInfo> {
         if let Some(uuid_ref) = self.uuid_by_id.get(&id) {
-            self.users_by_uuid.get(uuid_ref.as_str()).map(|u| u.value().clone())
+            self.users_by_uuid
+                .get(uuid_ref.as_str())
+                .map(|u| u.value().clone())
         } else {
             None
         }
@@ -118,7 +122,8 @@ impl UserManager {
         }
 
         // Evict expired or removed users
-        self.users_by_uuid.retain(|uuid, _| active_uuids.contains(uuid));
+        self.users_by_uuid
+            .retain(|uuid, _| active_uuids.contains(uuid));
         self.uuid_by_id.retain(|id, _| active_ids.contains(id));
 
         (self.users_by_uuid.len(), updated_or_added)
@@ -180,7 +185,10 @@ mod tests {
         assert!(auth_invalid.is_none());
 
         // Reverse lookup
-        assert_eq!(manager.get_user_id_by_uuid("d3b07384-d113-40e1-bb97-b2f7f9859f9a"), Some(2));
+        assert_eq!(
+            manager.get_user_id_by_uuid("d3b07384-d113-40e1-bb97-b2f7f9859f9a"),
+            Some(2)
+        );
         assert_eq!(manager.get_user_by_id(1).map(|u| u.id), Some(1));
 
         // Sync with removal of user 1
@@ -193,7 +201,10 @@ mod tests {
         let (total2, changed2) = manager.update_users(new_users);
         assert_eq!(total2, 1);
         assert_eq!(changed2, 1);
-        assert_eq!(manager.authenticate("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), None);
+        assert_eq!(
+            manager.authenticate("6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+            None
+        );
         assert_eq!(manager.get_user_by_id(2).unwrap().speed_limit, 5000);
     }
 }
