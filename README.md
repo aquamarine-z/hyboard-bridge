@@ -75,16 +75,15 @@ flowchart TD
 
 ## ⚙️ 环境变量与配置参数
 
-| 变量名 | 必填 | 默认值 | 说明 |
+| 变量名 | 必填 | 默认值 | 说明与格式示例 |
 | :--- | :---: | :---: | :--- |
 | `API_HOST` | **是** | - | 面板地址，如 `https://panel.example.com` |
 | `API_KEY` / `TOKEN` | **是** | - | X-board 面板中的通讯密钥 (UniProxy Token) |
 | `NODE_ID` | **是** | - | 面板中分配的节点 ID（整数，如 `1`） |
+| `HYSTERIA_API` | **是** | - | **Hysteria 2 统一集成端点**（自动配置 Auth 监听与流量采集）<br>• 单机部署：`127.0.0.1`<br>• Docker 编排：`hysteria`<br>• URL 形式：`http://127.0.0.1:7654`<br>• 自定义端口：`0.0.0.0:9999@http://127.0.0.1:7654/traffic` |
 | `NODE_TYPE` | 否 | `hysteria` | 节点类型 |
 | `SYNC_INTERVAL` | 否 | `15` | 用户白名单同步周期（秒） |
 | `PUSH_INTERVAL` | 否 | `60` | 流量上报与心跳周期（秒） |
-| `AUTH_LISTEN_ADDR` | 否 | `127.0.0.1:9999` | Axum HTTP 鉴权服务监听地址 |
-| `HYSTERIA_TRAFFIC_URL` | 否 | `http://127.0.0.1:7654/traffic` | Hysteria 2 流量统计接口地址 |
 | `RUST_LOG` | 否 | `info` | 日志级别（`trace`, `debug`, `info`, `warn`, `error`） |
 
 ---
@@ -150,7 +149,7 @@ cat << 'EOF' > .env
 API_HOST=https://panel.example.com
 API_KEY=your_uniproxy_token_here
 NODE_ID=1
-NODE_TYPE=hysteria
+HYSTERIA_API=hysteria
 EOF
 ```
 
@@ -168,8 +167,7 @@ services:
       - .env
     environment:
       - RUST_LOG=info
-      - AUTH_LISTEN_ADDR=0.0.0.0:9999
-      - HYSTERIA_TRAFFIC_URL=http://hysteria:7654/traffic
+      - HYSTERIA_API=hysteria
     networks:
       - hyboard-net
 

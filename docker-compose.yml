@@ -15,8 +15,7 @@ services:
       - .env
     environment:
       - RUST_LOG=info
-      - AUTH_LISTEN_ADDR=0.0.0.0:9999
-      - HYSTERIA_TRAFFIC_URL=http://hysteria:7654/traffic
+      - HYSTERIA_API=hysteria
     networks:
       - hyboard-net
 
