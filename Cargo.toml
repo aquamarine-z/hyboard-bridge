@@ -1,6 +1,6 @@
 [package]
 name = "hyboard-bridge"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["hyboard-bridge contributors"]
 description = "High-performance bridge daemon connecting X-board / V2board UniProxy API to Hysteria 2 native core"
