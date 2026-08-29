@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # 1. hyboard-bridge: Orchestrator, Auth Webhook & Traffic Reporter
+  # ============================================================================
+  hyboard-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hyboard-bridge:latest
+    container_name: hyboard-bridge
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - RUST_LOG=info
+      - AUTH_LISTEN_ADDR=0.0.0.0:9999
+      - HYSTERIA_TRAFFIC_URL=http://hysteria:7654/traffic
+    networks:
+      - hyboard-net
+
+  # ============================================================================
+  # 2. Hysteria 2 Official Core (apernet/hysteria)
+  # ============================================================================
+  hysteria:
+    image: apernet/hysteria:latest
+    container_name: hysteria-core
+    restart: unless-stopped
+    command: ["server", "-c", "/etc/hysteria/server.yaml"]
+    volumes:
+      - ./server.yaml:/etc/hysteria/server.yaml:ro
+      - ./certs:/etc/hysteria/certs:ro
+    ports:
+      - "443:443/udp"
+      - "443:443/tcp"
+    networks:
+      - hyboard-net
+    depends_on:
+      - hyboard-bridge
+
+networks:
+  hyboard-net:
+    driver: bridge

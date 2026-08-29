@@ -1,0 +1,22 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+
+# Environment & local secrets
+.env
+.env.local
+*.env
+
+# Generated configuration & runtime files
+server.yaml
+test_server.yaml
+config/
+certs/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
